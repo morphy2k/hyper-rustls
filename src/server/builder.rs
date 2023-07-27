@@ -4,6 +4,7 @@ use hyper::server::conn::AddrIncoming;
 use rustls::ServerConfig;
 
 use super::TlsAcceptor;
+
 /// Builder for [`TlsAcceptor`]
 pub struct AcceptorBuilder<State>(State);
 

@@ -5,7 +5,7 @@
 //! hyper will automatically use HTTP/2 if a client starts talking HTTP/2,
 //! otherwise HTTP/1.1 will be used.
 
-#![cfg(feature = "acceptor")]
+#![cfg(feature = "server")]
 
 use std::vec::Vec;
 use std::{env, fs, io};
@@ -13,7 +13,7 @@ use std::{env, fs, io};
 use hyper::server::conn::AddrIncoming;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use hyper_rustls::TlsAcceptor;
+use hyper_rustls::server::TlsAcceptor;
 
 fn main() {
     // Serve an echo service over HTTPS, with proper error handling.

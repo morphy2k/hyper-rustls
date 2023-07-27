@@ -2,6 +2,9 @@
 //!
 //! First parameter is the mandatory URL to GET.
 //! Second parameter is an optional path to CA store.
+
+#![cfg(all(feature = "client", feature = "http1"))]
+
 use hyper::{body::to_bytes, client, Body, Uri};
 use hyper_rustls::ConfigBuilderExt;
 use rustls::RootCertStore;
@@ -64,7 +67,7 @@ async fn run_client() -> io::Result<()> {
             .with_no_client_auth(),
     };
     // Prepare the HTTPS connector
-    let https = hyper_rustls::HttpsConnectorBuilder::new()
+    let https = hyper_rustls::client::HttpsConnectorBuilder::new()
         .with_tls_config(tls)
         .https_or_http()
         .enable_http1()

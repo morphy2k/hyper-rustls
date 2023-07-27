@@ -14,12 +14,14 @@ fn examples_dir() -> PathBuf {
         .join("examples")
 }
 
-fn server_command() -> Command {
-    Command::new(examples_dir().join("server"))
-}
-
+#[cfg(all(feature = "client", feature = "http1"))]
 fn client_command() -> Command {
     Command::new(examples_dir().join("client"))
+}
+
+#[cfg(feature = "server")]
+fn server_command() -> Command {
+    Command::new(examples_dir().join("server"))
 }
 
 fn wait_for_server(addr: &str) {
@@ -32,6 +34,7 @@ fn wait_for_server(addr: &str) {
     panic!("failed to connect to {:?} after 10 tries", addr);
 }
 
+#[cfg(all(feature = "client", feature = "http1"))]
 #[test]
 fn client() {
     let rc = client_command()
@@ -42,7 +45,7 @@ fn client() {
     assert!(rc.status.success());
 }
 
-#[cfg(feature = "acceptor")]
+#[cfg(feature = "server")]
 #[test]
 fn server() {
     let mut srv = server_command()
@@ -75,6 +78,7 @@ fn server() {
     assert_eq!(String::from_utf8_lossy(&*output.stdout), "Try POST /echo\n");
 }
 
+#[cfg(all(feature = "server", feature = "client", feature = "http1"))]
 #[test]
 fn custom_ca_store() {
     let mut srv = server_command()

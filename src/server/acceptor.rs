@@ -12,9 +12,7 @@ use hyper::server::{
 use rustls::ServerConfig;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-mod builder;
-pub use builder::AcceptorBuilder;
-use builder::WantsTlsConfig;
+use super::{builder::WantsTlsConfig, AcceptorBuilder};
 
 enum State {
     Handshaking(tokio_rustls::Accept<AddrStream>),
@@ -95,8 +93,8 @@ impl AsyncWrite for TlsStream {
 
 /// A TLS acceptor that can be used with hyper servers.
 pub struct TlsAcceptor {
-    config: Arc<ServerConfig>,
-    incoming: AddrIncoming,
+    pub(super) config: Arc<ServerConfig>,
+    pub(super) incoming: AddrIncoming,
 }
 
 /// An Acceptor for the `https` scheme.
@@ -105,6 +103,7 @@ impl TlsAcceptor {
     pub fn builder() -> AcceptorBuilder<WantsTlsConfig> {
         AcceptorBuilder::new()
     }
+
     /// Creates a new `TlsAcceptor` from a `ServerConfig` and an `AddrIncoming`.
     pub fn new(config: Arc<ServerConfig>, incoming: AddrIncoming) -> TlsAcceptor {
         TlsAcceptor { config, incoming }

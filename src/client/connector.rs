@@ -8,19 +8,17 @@ use hyper::{client::connect::Connection, service::Service, Uri};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::TlsConnector;
 
-use crate::stream::MaybeHttpsStream;
-
-pub mod builder;
+use super::stream::MaybeHttpsStream;
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 /// A Connector for the `https` scheme.
 #[derive(Clone)]
 pub struct HttpsConnector<T> {
-    force_https: bool,
-    http: T,
-    tls_config: Arc<rustls::ClientConfig>,
-    override_server_name: Option<String>,
+    pub(super) force_https: bool,
+    pub(super) http: T,
+    pub(super) tls_config: Arc<rustls::ClientConfig>,
+    pub(super) override_server_name: Option<String>,
 }
 
 impl<T> HttpsConnector<T> {

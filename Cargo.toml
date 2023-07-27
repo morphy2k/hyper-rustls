@@ -12,7 +12,7 @@ documentation = "https://docs.rs/hyper-rustls/"
 
 [dependencies]
 http = "0.2"
-hyper = { version = "0.14", default-features = false, features = ["client"] }
+hyper = { version = "0.14", default-features = false }
 log = { version = "0.4.4", optional = true }
 rustls-native-certs = { version = "0.6", optional = true }
 rustls = { version = "0.21.0", default-features = false }
@@ -28,25 +28,26 @@ rustls-pemfile = "1.0.0"
 tokio = { version = "1.0", features = ["io-std", "macros", "net", "rt-multi-thread"] }
 
 [features]
-default = ["native-tokio", "http1", "tls12", "logging", "acceptor"]
-acceptor = ["hyper/server", "tokio-runtime"]
+default = ["native-tokio", "http1", "tls12", "logging", "server", "client"]
+server = ["hyper/server", "tokio-runtime"]
+client = ["hyper/client", "tokio-runtime"]
 http1 = ["hyper/http1"]
 http2 = ["hyper/http2"]
 webpki-tokio = ["tokio-runtime", "webpki-roots"]
 native-tokio = ["tokio-runtime", "rustls-native-certs"]
-tokio-runtime =  ["hyper/runtime"]
+tokio-runtime = ["hyper/runtime"]
 tls12 = ["tokio-rustls/tls12", "rustls/tls12"]
 logging = ["log", "tokio-rustls/logging", "rustls/logging"]
 
 [[example]]
 name = "client"
 path = "examples/client.rs"
-required-features = ["native-tokio", "http1"]
+required-features = ["native-tokio", "client", "http1"]
 
 [[example]]
 name = "server"
 path = "examples/server.rs"
-required-features = ["tokio-runtime", "acceptor"]
+required-features = ["tokio-runtime", "server"]
 
 [package.metadata.docs.rs]
 all-features = true

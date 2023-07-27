@@ -15,7 +15,7 @@ use hyper::client::HttpConnector;
 /// # Examples
 ///
 /// ```
-/// use hyper_rustls::HttpsConnectorBuilder;
+/// use hyper_rustls::client::HttpsConnectorBuilder;
 ///
 /// # #[cfg(all(feature = "webpki-roots", feature = "tokio-runtime", feature = "http1"))]
 /// let https = HttpsConnectorBuilder::new()
@@ -157,6 +157,7 @@ impl ConnectorBuilder<WantsProtocols1> {
     ///
     /// This needs to be called explicitly, no protocol is enabled by default
     #[cfg(feature = "http1")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "http1")))]
     pub fn enable_http1(self) -> ConnectorBuilder<WantsProtocols2> {
         ConnectorBuilder(WantsProtocols2 { inner: self.0 })
     }
@@ -179,6 +180,7 @@ impl ConnectorBuilder<WantsProtocols1> {
     /// For now, this enables both HTTP 1 and 2. In the future, other supported versions
     /// will be enabled as well.
     #[cfg(all(feature = "http1", feature = "http2"))]
+    #[cfg_attr(docsrs, doc(cfg(all(feature = "http1", feature = "http2"))))]
     pub fn enable_all_versions(mut self) -> ConnectorBuilder<WantsProtocols3> {
         self.0.tls_config.alpn_protocols = vec![b"h2".to_vec()];
         ConnectorBuilder(WantsProtocols3 {
