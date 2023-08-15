@@ -71,7 +71,7 @@
 //! # fn main() {}
 //! ```
 
-#![warn(missing_docs)]
+#![warn(missing_docs, unreachable_pub, clippy::use_self)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "server")]
@@ -88,7 +88,7 @@ mod config;
 
 #[cfg(feature = "logging")]
 mod log {
-    pub use log::{debug, trace};
+    pub(crate) use log::{debug, trace};
 }
 
 #[cfg(not(feature = "logging"))]

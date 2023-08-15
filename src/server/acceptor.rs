@@ -9,87 +9,10 @@ use hyper::server::{
     accept::Accept,
     conn::{AddrIncoming, AddrStream},
 };
-use rustls::ServerConfig;
+use rustls::{ServerConfig, ServerConnection};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::{builder::WantsTlsConfig, AcceptorBuilder};
-
-enum State {
-    Handshaking(tokio_rustls::Accept<AddrStream>),
-    Streaming(tokio_rustls::server::TlsStream<AddrStream>),
-}
-
-// tokio_rustls::server::TlsStream doesn't expose constructor methods,
-// so we have to TlsAcceptor::accept and handshake to have access to it
-// TlsStream implements AsyncRead/AsyncWrite by handshaking with tokio_rustls::Accept first
-pub struct TlsStream {
-    state: State,
-}
-
-impl TlsStream {
-    fn new(stream: AddrStream, config: Arc<ServerConfig>) -> TlsStream {
-        let accept = tokio_rustls::TlsAcceptor::from(config).accept(stream);
-        TlsStream {
-            state: State::Handshaking(accept),
-        }
-    }
-}
-
-impl AsyncRead for TlsStream {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context,
-        buf: &mut ReadBuf,
-    ) -> Poll<io::Result<()>> {
-        let pin = self.get_mut();
-        match pin.state {
-            State::Handshaking(ref mut accept) => match ready!(Pin::new(accept).poll(cx)) {
-                Ok(mut stream) => {
-                    let result = Pin::new(&mut stream).poll_read(cx, buf);
-                    pin.state = State::Streaming(stream);
-                    result
-                }
-                Err(err) => Poll::Ready(Err(err)),
-            },
-            State::Streaming(ref mut stream) => Pin::new(stream).poll_read(cx, buf),
-        }
-    }
-}
-
-impl AsyncWrite for TlsStream {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        let pin = self.get_mut();
-        match pin.state {
-            State::Handshaking(ref mut accept) => match ready!(Pin::new(accept).poll(cx)) {
-                Ok(mut stream) => {
-                    let result = Pin::new(&mut stream).poll_write(cx, buf);
-                    pin.state = State::Streaming(stream);
-                    result
-                }
-                Err(err) => Poll::Ready(Err(err)),
-            },
-            State::Streaming(ref mut stream) => Pin::new(stream).poll_write(cx, buf),
-        }
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        match self.state {
-            State::Handshaking(_) => Poll::Ready(Ok(())),
-            State::Streaming(ref mut stream) => Pin::new(stream).poll_flush(cx),
-        }
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        match self.state {
-            State::Handshaking(_) => Poll::Ready(Ok(())),
-            State::Streaming(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
-        }
-    }
-}
 
 /// A TLS acceptor that can be used with hyper servers.
 pub struct TlsAcceptor {
@@ -105,18 +28,8 @@ impl TlsAcceptor {
     }
 
     /// Creates a new `TlsAcceptor` from a `ServerConfig` and an `AddrIncoming`.
-    pub fn new(config: Arc<ServerConfig>, incoming: AddrIncoming) -> TlsAcceptor {
-        TlsAcceptor { config, incoming }
-    }
-}
-
-impl<C, I> From<(C, I)> for TlsAcceptor
-where
-    C: Into<Arc<ServerConfig>>,
-    I: Into<AddrIncoming>,
-{
-    fn from((config, incoming): (C, I)) -> TlsAcceptor {
-        TlsAcceptor::new(config.into(), incoming.into())
+    pub fn new(config: Arc<ServerConfig>, incoming: AddrIncoming) -> Self {
+        Self { config, incoming }
     }
 }
 
@@ -129,10 +42,122 @@ impl Accept for TlsAcceptor {
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
         let pin = self.get_mut();
-        match ready!(Pin::new(&mut pin.incoming).poll_accept(cx)) {
-            Some(Ok(sock)) => Poll::Ready(Some(Ok(TlsStream::new(sock, pin.config.clone())))),
-            Some(Err(e)) => Poll::Ready(Some(Err(e))),
-            None => Poll::Ready(None),
+        Poll::Ready(match ready!(Pin::new(&mut pin.incoming).poll_accept(cx)) {
+            Some(Ok(sock)) => Some(Ok(TlsStream::new(sock, pin.config.clone()))),
+            Some(Err(e)) => Some(Err(e)),
+            None => None,
+        })
+    }
+}
+
+impl<C, I> From<(C, I)> for TlsAcceptor
+where
+    C: Into<Arc<ServerConfig>>,
+    I: Into<AddrIncoming>,
+{
+    fn from((config, incoming): (C, I)) -> Self {
+        Self::new(config.into(), incoming.into())
+    }
+}
+
+/// A TLS stream constructed by a [`TlsAcceptor`].
+// tokio_rustls::server::TlsStream doesn't expose constructor methods,
+// so we have to TlsAcceptor::accept and handshake to have access to it
+// TlsStream implements AsyncRead/AsyncWrite by handshaking with tokio_rustls::Accept first
+pub struct TlsStream {
+    state: State,
+}
+
+impl TlsStream {
+    fn new(stream: AddrStream, config: Arc<ServerConfig>) -> Self {
+        let accept = tokio_rustls::TlsAcceptor::from(config).accept(stream);
+        Self {
+            state: State::Handshaking(accept),
         }
     }
+
+    /// Returns a reference to the underlying IO stream.
+    ///
+    /// This should always return `Some`, except if an error has already been yielded.
+    pub fn io(&self) -> Option<&AddrStream> {
+        match &self.state {
+            State::Handshaking(accept) => accept.get_ref(),
+            State::Streaming(stream) => Some(stream.get_ref().0),
+        }
+    }
+
+    /// Returns a reference to the underlying [`rustls::ServerConnection'].
+    ///
+    /// This will start yielding `Some` only after the handshake has completed.
+    pub fn connection(&self) -> Option<&ServerConnection> {
+        match &self.state {
+            State::Handshaking(_) => None,
+            State::Streaming(stream) => Some(stream.get_ref().1),
+        }
+    }
+}
+
+impl AsyncRead for TlsStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<()>> {
+        let pin = self.get_mut();
+        let accept = match &mut pin.state {
+            State::Handshaking(accept) => accept,
+            State::Streaming(stream) => return Pin::new(stream).poll_read(cx, buf),
+        };
+
+        let mut stream = match ready!(Pin::new(accept).poll(cx)) {
+            Ok(stream) => stream,
+            Err(err) => return Poll::Ready(Err(err)),
+        };
+
+        let result = Pin::new(&mut stream).poll_read(cx, buf);
+        pin.state = State::Streaming(stream);
+        result
+    }
+}
+
+impl AsyncWrite for TlsStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let pin = self.get_mut();
+        let accept = match &mut pin.state {
+            State::Handshaking(accept) => accept,
+            State::Streaming(stream) => return Pin::new(stream).poll_write(cx, buf),
+        };
+
+        let mut stream = match ready!(Pin::new(accept).poll(cx)) {
+            Ok(stream) => stream,
+            Err(err) => return Poll::Ready(Err(err)),
+        };
+
+        let result = Pin::new(&mut stream).poll_write(cx, buf);
+        pin.state = State::Streaming(stream);
+        result
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match &mut self.state {
+            State::Handshaking(_) => Poll::Ready(Ok(())),
+            State::Streaming(stream) => Pin::new(stream).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match &mut self.state {
+            State::Handshaking(_) => Poll::Ready(Ok(())),
+            State::Streaming(stream) => Pin::new(stream).poll_shutdown(cx),
+        }
+    }
+}
+
+enum State {
+    Handshaking(tokio_rustls::Accept<AddrStream>),
+    Streaming(tokio_rustls::server::TlsStream<AddrStream>),
 }
