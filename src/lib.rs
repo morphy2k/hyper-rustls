@@ -14,6 +14,7 @@
 //! let url = ("https://hyper.rs").parse().unwrap();
 //! let https = hyper_rustls::client::HttpsConnectorBuilder::new()
 //!     .with_native_roots()
+//!     .expect("no native root CA certificates found")
 //!     .https_only()
 //!     .enable_http1()
 //!     .build();
@@ -57,6 +58,12 @@
 //! // Load and return a single private key.
 //! let keys = rustls_pemfile::rsa_private_keys(&mut reader).unwrap();
 //! let key = rustls::PrivateKey(keys[0].clone());
+//! let https = hyper_rustls::client::HttpsConnectorBuilder::new()
+//!     .with_native_roots()
+//!     .expect("no native root CA certificates found")
+//!     .https_only()
+//!     .enable_http1()
+//!     .build();
 //!
 //! let incoming = AddrIncoming::bind(&addr).unwrap();
 //! let acceptor = TlsAcceptor::builder()
